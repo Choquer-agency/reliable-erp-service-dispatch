@@ -1,0 +1,714 @@
+# Reliable Equipment Rentals — Service Dispatch Tool: Full Implementation Plan
+
+## Context
+
+Reliable Equipment Rentals Ltd needs a real-time Service Dispatch Board to replace their manual Excel + text message workflow. Daniel (dispatcher/operations lead) coordinates ~25 service calls/day across 5 field technicians servicing aerial lift equipment across BC's Lower Mainland. The current process is scattered across texts, phone calls, and a color-coded Excel spreadsheet — no single source of truth, no structured history, and delays when Daniel is on the phone.
+
+Goal: A lightweight, real-time web app with two primary interfaces:
+1. Dispatcher Dashboard (desktop-first) — weekly grid for managing all service calls
+2. Technician Mobile View (mobile-first) — daily schedule with tap-to-navigate, tap-to-call
+
+Tech Stack: Next.js 14+ (App Router), Convex (real-time backend), Convex Auth, Tailwind CSS + shadcn/ui, Vercel hosting.
+
+================================================================================
+
+# Phase 1: Project Scaffolding & Convex Setup
+
+Goal: Project running with Convex connected, auth working, data model in place, seed data loaded, basic responsive layout.
+
+## 1.1 — Scaffold Next.js Project
+
+  cd "/Users/brycechoquer/Desktop/Reliable ERP/Service - Dispatch - Dashbaord"
+  npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm
+
+## 1.2 — Install Dependencies
+
+  npm install convex @convex-dev/auth @auth/core@0.37.0
+  npx shadcn@latest init --defaults
+  npx shadcn@latest add button card input label sheet separator badge avatar dropdown-menu dialog sonner
+  npm install lucide-react
+
+## 1.3 — Initialize Convex & Auth
+
+  npx convex dev          # Creates convex/ dir, .env.local with NEXT_PUBLIC_CONVEX_URL
+  npx @convex-dev/auth    # Sets up auth config files
+  npx convex env set AUTH_SECRET -- "$(openssl rand -base64 32)"
+
+## 1.4 — Convex Schema (convex/schema.ts)
+
+5 tables plus Convex auth tables:
+
+  Table           | Key Fields                                              | Indexes
+  ----------------|--------------------------------------------------------|------------------------------------------
+  users           | name, email, role (dispatcher|technician|admin),        | email, by_role
+                  | technicianId?                                           |
+  technicians     | name, phone, email, isActive, color                     | by_name, by_active
+  serviceCalls    | rNumber, status (unassigned|assigned|in_progress|       | by_rNumber, by_status,
+                  | on_hold|completed), customerName, contactName,          | by_assignedTechnician,
+                  | contactPhone, machineInfo, complaint, address, city,    | by_scheduledDate,
+                  | assignedTechnician?, scheduledDate?, callOrder?,        | by_technician_and_date (compound),
+                  | priority?, dateOpened, requiresReturn, etc.             | by_status_and_technician (compound)
+  callNotes       | serviceCallId, authorId, authorName, content,           | by_serviceCall, by_author
+                  | noteType (general|parts_needed|return_required|         |
+                  | swap|status_update)                                     |
+  csvImports      | fileName, importedAt, importedBy, rowCount, status,     | by_importedBy, by_status
+                  | errors?                                                 |
+
+Key design decisions:
+- scheduledDate as ISO string — calendar-day semantics, sorts correctly in indexes
+- Compound index by_technician_and_date enables the core dispatcher grid query
+- role directly on users table — simple union, avoids extra join on every auth check
+
+## 1.5 — Convex Auth (convex/auth.ts)
+
+- Email/password only via @convex-dev/auth/providers/Password
+- Exports: auth, signIn, signOut, store, isAuthenticated
+
+## 1.6 — Convex Functions
+
+  convex/serviceCalls.ts
+    - list query — filters by status, technician, scheduledDate using compound indexes
+    - getById query — single call with all fields
+    - create mutation — defaults to status: "unassigned", requiresReturn: false
+    - update mutation — partial field updates
+    - assign mutation — sets technician + date + callOrder, status -> "assigned"
+    - updateStatus mutation — validates allowed state transitions
+    - unassign mutation — clears technician, status -> "unassigned"
+
+  convex/callNotes.ts
+    - listByServiceCall query — notes for a call ordered by _creationTime
+    - create mutation — auto-fills authorId/authorName from auth context
+
+  convex/technicians.ts
+    - list query — all or active-only
+    - getById query
+    - create / update mutations
+    - deactivate mutation — sets isActive: false
+
+  convex/users.ts
+    - currentUser query — gets authenticated user with role
+    - setUserRole mutation — admin-only role assignment
+
+## 1.7 — Seed Data (convex/seed.ts)
+
+internalMutation — idempotent (checks if technicians exist first).
+
+  5 Technicians:
+    Amrit Darred    | Blue   (#3B82F6)
+    Brian Yi        | Green  (#10B981)
+    Surendra Reddy  | Amber  (#F59E0B)
+    Calvin Au-Yeung | Purple (#8B5CF6)
+    Dave Morrison   | Red    (#EF4444)
+
+  8 Service Calls (from actual Point of Rental export):
+    r51854: Burke Mountain Secondary, GS-2632, Coquitlam       -> Brian Yi
+    r51896: Oakridge (Keystone), GS-1930, Vancouver             -> Brian Yi
+    r51945: Apollo Exteriors, S-85N, Abbotsford                 -> Surendra Reddy
+    r51949: Home Craft Siding, S-65 D-GEN, Coquitlam           -> Surendra Reddy
+    r51965: Westminster Lift Truck, GS-3246, Delta              -> Brian Yi
+    r51981: Quantum Mechanical, GS-2646, Vancouver              -> Unassigned
+    r51993: New Hospital, GR-20, Surrey                         -> Unassigned
+    r52003: Midland Exteriors, S-65 D-GEN, Vancouver            -> Unassigned
+
+  Plus 3-4 sample callNotes on different calls.
+
+## 1.8 — Next.js Provider & Layout
+
+  src/app/ConvexClientProvider.tsx — Client component wrapping with ConvexAuthProvider + ConvexReactClient
+  src/app/layout.tsx — Root layout with ConvexClientProvider, Toaster (sonner), viewport meta
+
+## 1.9 — Auth Pages (src/app/(auth)/)
+
+  layout.tsx — centered card layout, no sidebar
+  sign-in/page.tsx — email + password form
+  sign-up/page.tsx — name + email + password form
+
+## 1.10 — Middleware (src/middleware.ts)
+
+  - convexAuthNextjsMiddleware from @convex-dev/auth/nextjs/server
+  - Public routes: /sign-in, /sign-up
+  - Unauthenticated -> redirect to /sign-in
+  - Authenticated on auth pages -> redirect to /
+
+## 1.11 — Dashboard Layout & Navigation
+
+  Route group: src/app/(dashboard)/
+
+  layout.tsx — responsive AppShell:
+    Desktop (md+): fixed left sidebar (w-64) + main content area
+    Mobile: full-width content + fixed bottom tab bar
+
+  Components:
+    src/components/layout/Sidebar.tsx — nav by role (Dispatcher: Dashboard, Calls, Import, Techs; Technician: My Schedule), user menu at bottom
+    src/components/layout/MobileNav.tsx — bottom tab bar, iOS safe-area padding
+    src/hooks/useCurrentUser.ts — returns { user, role, isLoading }
+
+## 1.12 — Placeholder Pages
+
+  Route                              | Purpose
+  -----------------------------------|--------------------------------------------------
+  (dashboard)/page.tsx               | Role-based redirect (dispatcher -> /dashboard, tech -> /my-schedule)
+  (dashboard)/dashboard/page.tsx     | Dispatcher home — shows call counts, placeholder for grid
+  (dashboard)/my-schedule/page.tsx   | Tech home — placeholder for Phase 3
+  (dashboard)/service-calls/page.tsx | Lists all service calls via useQuery
+  (dashboard)/technicians/page.tsx   | Lists all technicians
+
+## 1.13 — Verification
+
+  1. npx convex dev runs — all tables visible in Convex dashboard
+  2. Sign up -> user created, redirected to dashboard
+  3. Sign in works, auth pages redirect if already authenticated
+  4. Unauthenticated users redirected to /sign-in
+  5. Seed data loads: 5 technicians, 8 service calls visible
+  6. Real-time: edit a record in Convex dashboard -> page updates without refresh
+  7. Responsive: mobile width shows bottom tabs, desktop shows sidebar
+
+================================================================================
+
+# Phase 2: Dispatcher Dashboard — Weekly Grid View
+
+Goal: Build the main dispatcher interface — the weekly grid that replaces Daniel's Excel spreadsheet.
+
+## 2.1 — Weekly Grid Layout (src/app/(dashboard)/dashboard/page.tsx)
+
+  Structure:
+    Top bar: week navigation (<- prev | "Apr 7-12, 2026" | next ->) + date picker + "Add Call" button + unassigned count badge
+    Main grid:
+      Columns = Technicians (one per active technician)
+      Rows = Days of the week (Mon-Sat), each day subdivided into up to 8 call slots
+      Default view: current week
+
+  Components to create:
+    src/components/dispatch/WeeklyGrid.tsx — the main grid container
+    src/components/dispatch/TechnicianColumn.tsx — single technician's column with day sections
+    src/components/dispatch/DaySection.tsx — one day within a technician's column, holds call slots
+    src/components/dispatch/CallSlot.tsx — individual slot (empty or occupied)
+
+  Data flow:
+    useQuery(api.serviceCalls.list, { scheduledDate: weekRange }) — fetches all calls for the visible week
+    useQuery(api.technicians.list, { activeOnly: true }) — gets column headers
+    Client-side grouping: group calls by assignedTechnician + scheduledDate, sort by callOrder
+
+## 2.2 — Service Call Card (src/components/dispatch/ServiceCallCard.tsx)
+
+  Each card in the grid shows:
+    - R-number (small, muted text)
+    - Customer name (bold)
+    - Machine info (e.g., "S85 - #5601")
+    - Complaint (1-line truncated)
+    - Color-coded left border or background by status:
+        Unassigned: gray
+        Assigned: blue
+        In Progress: yellow/amber
+        On Hold: orange
+        Completed: green
+
+  Click -> opens detail drawer (Step 2.5).
+
+## 2.3 — Unassigned Queue Panel
+
+  Component: src/components/dispatch/UnassignedQueue.tsx
+
+    - Collapsible right panel or top banner
+    - Badge: "12 Unassigned Calls"
+    - Lists all calls where status === "unassigned" ordered by dateOpened (oldest first)
+    - Each item: R-number, customer, machine, complaint, days since opened, priority indicator
+    - Items are draggable (for drag-and-drop assignment)
+    - Fallback: click item -> opens detail panel with assign dropdown
+
+## 2.4 — Drag-and-Drop Assignment
+
+  Library: @dnd-kit/core + @dnd-kit/sortable
+
+    npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities
+
+  Behavior:
+    - Drag a card from the unassigned queue onto a technician's day slot
+    - On drop: calls serviceCalls.assign mutation with { id, technicianId, scheduledDate, callOrder }
+    - Convex optimistic updates make it feel instant
+    - Also support click-to-assign via a dropdown (accessibility fallback)
+    - Within a technician's day: drag to reorder (updates callOrder for affected calls)
+
+  Components:
+    src/components/dispatch/DndContext.tsx — wraps the grid + queue with @dnd-kit DndContext
+    Draggable wrapper for ServiceCallCard
+    Droppable zones for each CallSlot
+
+## 2.5 — Service Call Detail Panel (src/components/dispatch/ServiceCallDetail.tsx)
+
+  Right-side drawer (shadcn Sheet) that opens when clicking any call card:
+
+  Sections:
+    1. Header: R-number + status badge + priority indicator
+    2. Customer Info: customerName, contactName, contactPhone (tel: link), contactEmail
+    3. Equipment: machineInfo, itemName
+    4. Location: address (Google Maps link), city, postalCode, locationName
+    5. Assignment: technician dropdown (assign/reassign), date picker, call order
+    6. Status Controls: buttons for allowed transitions
+    7. Notes Thread: chronological list + add note input at bottom (real-time subscription)
+    8. Metadata: dateOpened, requiresReturn flag, returnReason, importSource
+
+  Actions:
+    - Assign/reassign technician
+    - Change status (with validation)
+    - Add note
+    - Flag for return trip (sets requiresReturn: true, prompts for reason)
+    - Mark complete (sets dateCompleted)
+
+## 2.6 — Add Service Call Form (src/components/dispatch/AddServiceCallForm.tsx)
+
+  Modal (shadcn Dialog) triggered by "Add Call" button:
+
+  Fields:
+    - R-number (text, optional)
+    - Customer name (required)
+    - Contact name, phone, email
+    - Machine info (required)
+    - Complaint (textarea, required)
+    - Address, city, postal code, location name
+    - Priority (select: urgent / normal / low)
+
+  On submit: serviceCalls.create mutation -> call appears in unassigned queue instantly.
+
+## 2.7 — Additional shadcn Components
+
+  npx shadcn@latest add select textarea calendar popover table scroll-area tooltip
+
+## 2.8 — Verification
+
+  1. Weekly grid renders with seeded data — calls appear in correct technician columns and days
+  2. Week navigation works (prev/next arrows, date picker)
+  3. Unassigned queue shows 3 unassigned calls from seed data
+  4. Drag a call from unassigned queue -> drops into a technician's slot -> call disappears from queue
+  5. Click a call -> detail panel opens with all info
+  6. Add a note in the detail panel -> it appears in real-time
+  7. Create a new call -> appears in unassigned queue
+  8. Change status from detail panel -> card color updates on the grid
+  9. Open two browser windows -> changes in one appear instantly in the other (real-time test)
+
+================================================================================
+
+# Phase 3: Technician Mobile View
+
+Goal: Mobile-first view each mechanic uses in the field — large touch targets, tap-to-navigate, tap-to-call.
+
+## 3.1 — My Schedule Page (src/app/(dashboard)/my-schedule/page.tsx)
+
+  Layout:
+    Top bar: today's date (large), technician name, date selector (prev/next day arrows)
+    Vertical list of assigned calls ordered by callOrder
+    Pull-to-refresh behavior
+
+  Data flow:
+    useCurrentUser() -> get technicianId
+    useQuery(api.serviceCalls.list, { assignedTechnician: technicianId, scheduledDate: today }) -> live call list
+
+## 3.2 — Mobile Call Card (src/components/mobile/MobileCallCard.tsx)
+
+  Full-width card, designed for thumb interaction (min 44px touch targets):
+
+    - Customer name — large, bold (text-lg font-bold)
+    - Machine info — e.g., "S85 - #5601" (text-base)
+    - Complaint — full text, wrapping allowed
+    - Address — map pin icon + text, tappable -> opens Google Maps directions
+    - Contact — person icon + name + phone icon -> tel: link (opens dialer)
+    - Status pill — colored badge showing current status, tappable to update
+    - Notes badge — icon with count, tap to open notes thread
+    - Call order number — large number on the left edge (#1, #2, etc.)
+
+## 3.3 — Status Updates from Mobile
+
+  Component: src/components/mobile/StatusUpdater.tsx
+
+  Tap the status pill -> bottom sheet (shadcn Sheet from bottom) with clear options:
+
+    Current Status | Available Actions
+    --------------|-------------------
+    assigned      | "Start Job" -> in_progress
+    in_progress   | "Mark Complete" -> completed, "Put On Hold" -> on_hold
+    on_hold       | "Resume" -> in_progress, "Mark Complete" -> completed
+
+  - "Put On Hold" prompts for a reason (textarea) -> creates a note with noteType: "return_required" AND sets requiresReturn: true + returnReason
+  - "Mark Complete" sets dateCompleted to now, shows confirmation
+  - All transitions require a single confirmation tap ("Are you sure?")
+  - Big, colorful buttons — easy to tap with gloves
+
+## 3.4 — Mobile Notes Thread (src/components/mobile/MobileNotesThread.tsx)
+
+  Opens as a bottom sheet or sub-page when tapping the notes icon:
+
+    - Full-screen bottom sheet (90vh)
+    - Notes listed chronologically (oldest first)
+    - Each note: author name, relative timestamp ("2 hours ago"), content
+    - Text input at bottom with send button (chat-style interface)
+    - Real-time via Convex subscription — dispatcher notes appear instantly
+    - Auto-scroll to newest note on open
+
+## 3.5 — PWA Configuration
+
+  Files to create:
+    public/manifest.json:
+      name: "Reliable Dispatch"
+      short_name: "Dispatch"
+      start_url: "/my-schedule"
+      display: "standalone"
+      theme_color: "#1e40af"
+
+    public/icons/ — app icons at 192x192 and 512x512
+
+    src/app/layout.tsx — add manifest link, theme-color meta, apple-mobile-web-app meta tags
+    Viewport meta: width=device-width, initial-scale=1, viewport-fit=cover (for iOS safe areas)
+
+  Note: Full offline support via service worker is NOT in Phase 3 scope. Convex handles reconnection automatically.
+
+## 3.6 — Connection State Banner (src/components/ui/ConnectionBanner.tsx)
+
+  - Uses Convex client's connection state
+  - Shows a yellow banner "Reconnecting..." when connection is lost
+  - Auto-dismisses when reconnected
+  - Fixed to top of the screen on mobile
+
+## 3.7 — Mobile-Specific UX Considerations
+
+  - CSS: touch-action: manipulation to prevent double-tap zoom
+  - Safe area insets: env(safe-area-inset-bottom) for bottom nav/inputs on notch phones
+  - Buttons: minimum h-12 w-12 (48px) touch targets
+  - Scroll: -webkit-overflow-scrolling: touch for smooth momentum scroll
+  - Phone numbers: <a href="tel:..."> with large tap target
+  - Addresses: full row tappable, not just the text
+
+## 3.8 — Verification
+
+  1. Log in as a technician -> see /my-schedule with today's assigned calls
+  2. Calls ordered by callOrder (Call #1 at top)
+  3. Tap address -> Google Maps opens with directions
+  4. Tap phone number -> phone dialer opens
+  5. Tap status pill -> bottom sheet with correct transition options
+  6. Mark a call "In Progress" -> status pill updates, dispatcher dashboard updates in real-time
+  7. Put a call "On Hold" -> prompted for reason -> note created, requiresReturn set
+  8. Open notes -> chat-style thread, add a note -> dispatcher sees it instantly
+  9. "Add to Home Screen" works — app opens in standalone mode
+  10. Kill network -> "Reconnecting..." banner appears -> restore network -> auto-reconnects
+
+================================================================================
+
+# Phase 4: CSV Import from Point of Rental
+
+Goal: Daniel can upload an Excel export from Point of Rental to bulk-create/update service calls.
+
+## 4.1 — Install Parser Library
+
+  npm install xlsx
+
+## 4.2 — Import Page (src/app/(dashboard)/import/page.tsx)
+
+  Layout:
+    1. Upload zone — drag-and-drop area or click to browse, accepts .xls and .xlsx
+    2. Preview table — shown after parsing, before import
+    3. Import results — shown after import completes
+
+  State machine: idle -> parsing -> preview -> importing -> results
+
+## 4.3 — File Upload Component (src/components/import/FileUploadZone.tsx)
+
+  - Drag-and-drop zone with dashed border
+  - Click to open file picker
+  - Accepts .xls, .xlsx only
+  - Shows file name + size after selection
+  - "Parse" button to proceed
+
+## 4.4 — Client-Side Parser (src/lib/parsePointOfRentalExport.ts)
+
+  Parses the uploaded file using xlsx (SheetJS) library. Runs client-side for instant preview.
+
+  Expected POR columns:
+    Status | Contract | Date Open | Due Date | Total | Owed | Item Name | Description | Location | Contact | Phone | Address | City | Zip | Operator Assigned
+
+  Mapping logic:
+
+    POR Column        | Our Field           | Transform
+    -------------------|---------------------|------------------------------------------
+    Contract           | rNumber             | Trim, normalize (ensure "r" prefix lowercase)
+    Item Name          | itemName            | Direct
+    Description        | machineInfo +       | Parse pattern: "Service Call - {model} -
+                       | complaint           | #{unit} - {customer}"
+    Location           | customerName /      | Direct (may need splitting)
+                       | locationName        |
+    Contact            | contactName         | Direct
+    Phone              | contactPhone        | Direct
+    Address            | address             | Direct
+    City               | city                | Direct
+    Zip                | postalCode          | Direct
+    Operator Assigned  | assignedTechnician  | Fuzzy name match against technicians table
+    Date Open          | dateOpened          | Parse date string to ISO
+
+  Description field parser (src/lib/parseDescription.ts):
+    Handles messy patterns like:
+      "Service Call - S65 - #4443 - Midland"    -> model: "S65", unit: "4443"
+      "Service Call - #8435 - 1930 - Keystone"  -> model: "1930", unit: "8435"
+      "Service Call - S45 - #0185- Homecraft"   -> model: "S45", unit: "0185"
+    Regex-based with fallback — extracts what it can, puts rest in complaint.
+
+## 4.5 — Preview Table (src/components/import/ImportPreview.tsx)
+
+  Shows parsed rows in a table with:
+    - All mapped fields visible
+    - Yellow badge on rows that already exist (match by rNumber)
+    - Red badge on rows with missing required fields
+    - Green badge on clean new rows
+    - Checkboxes to select/deselect rows for import
+    - "Select All" / "Deselect All"
+    - Row count summary: "8 new, 3 updates, 1 warning"
+
+## 4.6 — Import Execution
+
+  Convex mutation: convex/csvImports.ts -> importServiceCalls
+
+    - Takes array of parsed service call objects
+    - For each row: check if rNumber exists -> update or create
+    - Look up technician by name -> set assignedTechnician
+    - Set importSource: "csv_import"
+    - Log the import in csvImports table
+    - Return: { created, updated, skipped, errors[] }
+    - Batch strategy: if >100 rows, batch into chunks of 50
+
+## 4.7 — Import Results (src/components/import/ImportResults.tsx)
+
+  Shows after import completes:
+    - Summary cards: "Created 8" / "Updated 3" / "Skipped 1" / "Errors 0"
+    - Error details if any (expandable list)
+    - "View in Dashboard" button -> navigates to /dashboard
+    - "Import Another" button -> resets to upload zone
+
+## 4.8 — Convex Functions for Import
+
+  convex/csvImports.ts:
+    - importServiceCalls mutation — bulk create/update from parsed data
+    - list query — import history
+    - getById query — single import details
+
+  Updates to convex/serviceCalls.ts:
+    - getByRNumber query — check for existing calls during import preview
+
+## 4.9 — Verification
+
+  1. Upload a sample .xlsx file -> file accepted
+  2. Parser extracts correct fields -> preview table shows mapped data
+  3. Existing calls highlighted with "Already exists" badge
+  4. Missing field warnings shown for incomplete rows
+  5. Deselect a row -> it's skipped during import
+  6. Click "Import" -> results show correct counts
+  7. Imported calls appear in the dashboard immediately (real-time)
+  8. Re-import same file -> all rows show as "Already exists — will update"
+  9. Technician name matching works: "Brian Yi" in POR -> linked to Brian's technician record
+  10. Description field parsed correctly for standard patterns
+
+================================================================================
+
+# Phase 5: Polish, Search & History
+
+Goal: Call history/archive, global search, dashboard stats, technician management, and UI polish.
+
+## 5.1 — Call History Page (src/app/(dashboard)/history/page.tsx)
+
+  Layout:
+    - Search bar at top
+    - Filter row: date range picker, technician dropdown, status filter
+    - Results table (paginated or infinite scroll):
+        Columns: R-number, customer, machine, technician, status, date completed
+        Click row -> opens full detail view with notes
+    - Sorted by dateCompleted descending (most recent first)
+
+  Convex function: serviceCalls.listCompleted query with search/filter args + pagination
+
+## 5.2 — Global Search (src/components/layout/GlobalSearch.tsx)
+
+  - Search input in the top nav bar (desktop) or search icon -> expandable input (mobile)
+  - Keyboard shortcut: / or Cmd+K to focus (desktop)
+  - Searches across: rNumber, customerName, contactName, machineInfo, address
+  - Uses Convex search index on serviceCalls
+  - Results dropdown: shows matching calls with status badge
+  - Click result -> navigates to call detail
+
+  Schema addition needed:
+    searchIndex("search_calls", { searchField: "customerName", filterFields: ["status", "assignedTechnician"] })
+
+  Note: Convex search indexes support one searchField. May need a computed searchText field
+  that concatenates rNumber + customerName + contactName + machineInfo for multi-field search.
+
+## 5.3 — Dashboard Stats (src/components/dispatch/DashboardStats.tsx)
+
+  Top of the dispatcher dashboard page:
+
+  Summary cards row:
+    - Total calls today
+    - Assigned (count)
+    - In Progress (count)
+    - Completed (count)
+    - Unassigned (count, highlighted if > 0)
+
+  Per-technician mini summary (below cards):
+    - "Brian: 4 calls (2 complete, 1 in progress, 1 assigned)"
+    - Small colored dots matching technician colors
+
+  All powered by useQuery — update in real-time.
+
+## 5.4 — Notification Indicators
+
+  On the dispatcher dashboard:
+    - Call card pulse/animation when technician updates status
+    - Dot indicator for unread notes
+    - Toast notification for high-priority events: "Brian marked r51854 On Hold"
+
+  Implementation:
+    - Track "last seen" per call in localStorage (compare note count)
+    - Toast via sonner for status changes to on_hold or completed
+
+## 5.5 — Technician Management Page (src/app/(dashboard)/technicians/page.tsx)
+
+  Upgrade from placeholder to full CRUD:
+
+  List view:
+    - Table of all technicians (active + inactive)
+    - Columns: color dot, name, phone, email, status, assigned calls count
+    - "Add Technician" button
+
+  Add/Edit form (modal):
+    - Name (required), Phone, Email
+    - Display color (preset palette)
+    - Active toggle
+
+  Deactivate:
+    - Soft delete only
+    - Confirmation: "This technician has 3 active calls. Reassign them first?"
+    - Deactivated shown grayed out at bottom
+
+## 5.6 — UI Polish
+
+  Loading states:
+    - Skeleton screens for grid, call list, detail panel
+    - npx shadcn@latest add skeleton
+
+  Empty states:
+    - "No calls scheduled for today"
+    - "All caught up! No unassigned calls"
+    - "No calls found matching '{query}'"
+
+  Error handling:
+    - src/app/(dashboard)/error.tsx — error boundary with retry
+    - Toast notifications for mutation failures
+    - Inline form validation
+
+  Responsive refinements:
+    - Dashboard grid: horizontal scroll on tablet
+    - Detail panel: full-screen on mobile, right drawer on desktop
+
+  Keyboard shortcuts (dispatcher, desktop):
+    N — open new call form
+    Esc — close detail panel / modal
+    / or Cmd+K — focus search
+
+  Additional shadcn components:
+    npx shadcn@latest add skeleton switch command
+
+## 5.7 — Verification
+
+  1. History page: shows completed calls, search by R-number finds correct call
+  2. Filter by technician + date range -> correct results
+  3. Global search: type "Burke" -> finds Burke Mountain Secondary call
+  4. Dashboard stats: correct counts, update in real-time
+  5. Add a new technician -> appears in grid columns
+  6. Deactivate a technician -> removed from grid, grayed out in management
+  7. Skeleton loading states visible on slow connection
+  8. Empty states render correctly
+  9. Error boundary catches and displays errors gracefully
+  10. Keyboard shortcuts work on desktop
+  11. Full flow: create call -> assign -> tech updates status -> dispatcher sees update -> complete -> appears in history
+
+================================================================================
+
+# Architectural Decisions (All Phases)
+
+  Decision                              | Rationale
+  --------------------------------------|--------------------------------------------------
+  Route groups (auth) / (dashboard)     | Different layouts without affecting URLs
+  useQuery everywhere (no fetchQuery)   | Real-time subscriptions are the killer feature
+  scheduledDate as ISO string           | Calendar-day semantics, sorts correctly in indexes
+  Compound indexes                      | by_technician_and_date enables O(1) grid queries
+  Undefined role = dispatcher           | Simplifies initial setup
+  Client-side CSV parsing               | Instant preview without round-trip
+  @dnd-kit for drag-and-drop            | Accessible, React 18+ compatible, lightweight
+  localStorage for "last seen" notes    | Avoids extra table complexity
+  Soft-delete technicians               | Preserves history
+
+================================================================================
+
+# File Structure Overview (Final)
+
+  convex/
+    schema.ts              # Full schema with all indexes
+    auth.ts                # Convex Auth config
+    auth.config.ts         # Auth provider config
+    users.ts               # User queries + mutations
+    serviceCalls.ts        # Service call CRUD + filters
+    callNotes.ts           # Notes CRUD
+    technicians.ts         # Technician CRUD
+    csvImports.ts          # Import logic
+    seed.ts                # Seed data
+    _generated/            # Auto-generated by Convex
+
+  src/
+    app/
+      layout.tsx                         # Root layout + providers
+      globals.css                        # Tailwind + shadcn theme
+      ConvexClientProvider.tsx            # Convex + Auth provider
+      (auth)/
+        layout.tsx                       # Centered auth layout
+        sign-in/page.tsx
+        sign-up/page.tsx
+      (dashboard)/
+        layout.tsx                       # AppShell (sidebar + mobile nav)
+        page.tsx                         # Role-based redirect
+        dashboard/page.tsx               # Dispatcher grid (Phase 2)
+        my-schedule/page.tsx             # Technician view (Phase 3)
+        service-calls/page.tsx           # All calls list
+        import/page.tsx                  # CSV import (Phase 4)
+        history/page.tsx                 # Completed calls (Phase 5)
+        technicians/page.tsx             # Technician mgmt (Phase 5)
+        error.tsx                        # Error boundary
+    components/
+      layout/
+        Sidebar.tsx
+        MobileNav.tsx
+        GlobalSearch.tsx                 # Phase 5
+        UserMenu.tsx
+      dispatch/                          # Phase 2
+        WeeklyGrid.tsx
+        TechnicianColumn.tsx
+        DaySection.tsx
+        CallSlot.tsx
+        ServiceCallCard.tsx
+        ServiceCallDetail.tsx
+        UnassignedQueue.tsx
+        AddServiceCallForm.tsx
+        DashboardStats.tsx               # Phase 5
+        DndContext.tsx
+      mobile/                            # Phase 3
+        MobileCallCard.tsx
+        StatusUpdater.tsx
+        MobileNotesThread.tsx
+      import/                            # Phase 4
+        FileUploadZone.tsx
+        ImportPreview.tsx
+        ImportResults.tsx
+      ui/                                # shadcn components
+        ConnectionBanner.tsx
+      auth/
+        RoleGate.tsx
+    hooks/
+      useCurrentUser.ts
+    lib/
+      utils.ts                           # shadcn cn() utility
+      parsePointOfRentalExport.ts        # Phase 4
+      parseDescription.ts               # Phase 4
+    middleware.ts
