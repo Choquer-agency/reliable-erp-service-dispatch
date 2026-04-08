@@ -608,52 +608,99 @@ export const callLifecycle = query({
   },
 });
 
-// ─── Note-Based KPIs (Swap / Preventable counts) ───────────────────────────
+// ─── Rolling Tallies (multi-period KPIs) ────────────────────────────────────
 
-export const noteBasedKpis = query({
-  args: {
-    dateFrom: v.string(),
-    dateTo: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const dateFromMs = new Date(args.dateFrom).getTime();
-    const dateToMs = new Date(args.dateTo + "T23:59:59").getTime();
+export const rollingTallies = query({
+  args: {},
+  handler: async (ctx) => {
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
 
-    // Get all notes in the period
-    const allNotes = await ctx.db.query("callNotes").take(10000);
-    const notesInPeriod = allNotes.filter(
-      (n) => n._creationTime >= dateFromMs && n._creationTime <= dateToMs
-    );
+    // Compute period boundaries
+    const dayOfWeek = now.getDay(); // 0=Sun
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - mondayOffset);
+    const weekStartStr = weekStart.toISOString().split("T")[0];
 
-    const swapCount = notesInPeriod.filter(
-      (n) => n.noteType === "swap_required" || n.noteType === "swap"
-    ).length;
-    const preventableCount = notesInPeriod.filter(
-      (n) => n.noteType === "preventable"
-    ).length;
-    const returnRequiredCount = notesInPeriod.filter(
-      (n) => n.noteType === "return_required"
-    ).length;
+    const monthStartStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const yearStartStr = `${now.getFullYear()}-01-01`;
 
-    // Calls 2+ days old that are still open
-    const now = Date.now();
-    const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+    const todayMs = new Date(todayStr).getTime();
+    const weekStartMs = new Date(weekStartStr).getTime();
+    const monthStartMs = new Date(monthStartStr).getTime();
+    const yearStartMs = new Date(yearStartStr).getTime();
+
+    // ── Completed calls by period ──
     const allCalls = await ctx.db.query("serviceCalls").take(5000);
-    const oldOpenCalls = allCalls.filter(
-      (c) =>
-        c.status !== "completed" &&
-        now - c._creationTime >= twoDaysMs
-    );
 
-    // Per-technician swap and preventable counts
+    const completedToday = allCalls.filter(
+      (c) => c.dateCompleted === todayStr
+    ).length;
+    const completedThisMonth = allCalls.filter(
+      (c) => c.dateCompleted && c.dateCompleted >= monthStartStr
+    ).length;
+    const completedThisYear = allCalls.filter(
+      (c) => c.dateCompleted && c.dateCompleted >= yearStartStr
+    ).length;
+
+    // ── Status tallies (current snapshot — how many calls sit in each status) ──
+    const statusCounts: Record<string, number> = {};
+    for (const call of allCalls) {
+      statusCounts[call.status] = (statusCounts[call.status] ?? 0) + 1;
+    }
+
+    // ── Calls 2+ days old that are still open ──
+    const nowMs = Date.now();
+    const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+    const oldOpenCallsCount = allCalls.filter(
+      (c) => c.status !== "completed" && nowMs - c._creationTime >= twoDaysMs
+    ).length;
+
+    // ── Note-based tallies across periods ──
+    const allNotes = await ctx.db.query("callNotes").take(10000);
+
+    function countNotes(
+      noteType: string | string[],
+      sinceMs: number
+    ): number {
+      const types = Array.isArray(noteType) ? noteType : [noteType];
+      return allNotes.filter(
+        (n) => types.includes(n.noteType) && n._creationTime >= sinceMs
+      ).length;
+    }
+
+    const swaps = {
+      today: countNotes(["swap_required", "swap"], todayMs),
+      thisWeek: countNotes(["swap_required", "swap"], weekStartMs),
+      thisMonth: countNotes(["swap_required", "swap"], monthStartMs),
+      thisYear: countNotes(["swap_required", "swap"], yearStartMs),
+    };
+
+    const preventable = {
+      today: countNotes("preventable", todayMs),
+      thisWeek: countNotes("preventable", weekStartMs),
+      thisMonth: countNotes("preventable", monthStartMs),
+      thisYear: countNotes("preventable", yearStartMs),
+    };
+
+    const returnRequired = {
+      today: countNotes("return_required", todayMs),
+      thisWeek: countNotes("return_required", weekStartMs),
+      thisMonth: countNotes("return_required", monthStartMs),
+      thisYear: countNotes("return_required", yearStartMs),
+    };
+
+    // ── Per-technician note tallies (for the selected period — use week) ──
     const technicians = await ctx.db
       .query("technicians")
       .withIndex("by_active", (q) => q.eq("isActive", true))
       .take(50);
 
+    const weekNotes = allNotes.filter((n) => n._creationTime >= weekStartMs);
+
     const perTech = await Promise.all(
       technicians.map(async (tech) => {
-        // Get calls assigned to this tech
         const techCalls = await ctx.db
           .query("serviceCalls")
           .withIndex("by_assignedTechnician", (q) =>
@@ -661,10 +708,7 @@ export const noteBasedKpis = query({
           )
           .take(1000);
         const techCallIds = new Set(techCalls.map((c) => c._id));
-
-        const techNotes = notesInPeriod.filter((n) =>
-          techCallIds.has(n.serviceCallId)
-        );
+        const techNotes = weekNotes.filter((n) => techCallIds.has(n.serviceCallId));
 
         return {
           techId: tech._id,
@@ -683,10 +727,16 @@ export const noteBasedKpis = query({
     );
 
     return {
-      swapCount,
-      preventableCount,
-      returnRequiredCount,
-      oldOpenCallsCount: oldOpenCalls.length,
+      completed: {
+        today: completedToday,
+        thisMonth: completedThisMonth,
+        thisYear: completedThisYear,
+      },
+      statusCounts,
+      oldOpenCallsCount,
+      swaps,
+      preventable,
+      returnRequired,
       perTech,
     };
   },

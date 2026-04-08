@@ -17,7 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, AlertTriangle } from "lucide-react";
+import { STATUS_LABELS, STATUS_COLORS } from "@/lib/statusConfig";
 
 function formatHours(hours: number | null): string {
   if (hours === null) return "—";
@@ -37,6 +38,59 @@ function rateColor(rate: number, invert = false): "green" | "yellow" | "red" {
   return "red";
 }
 
+/** Compact row showing a metric across time periods */
+function TallyRow({
+  label,
+  today,
+  thisWeek,
+  thisMonth,
+  thisYear,
+  accent = "default",
+}: {
+  label: string;
+  today: number;
+  thisWeek?: number;
+  thisMonth: number;
+  thisYear?: number;
+  accent?: "default" | "red" | "amber";
+}) {
+  const textClass =
+    accent === "red"
+      ? "text-red-600 dark:text-red-400"
+      : accent === "amber"
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-foreground";
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b last:border-b-0">
+      <span className={`text-sm font-medium ${accent !== "default" ? textClass : ""}`}>
+        {label}
+      </span>
+      <div className="flex items-center gap-6">
+        <div className="text-center min-w-[48px]">
+          <p className={`text-lg font-bold tabular-nums leading-none ${textClass}`}>{today}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Today</p>
+        </div>
+        {thisWeek !== undefined && (
+          <div className="text-center min-w-[48px]">
+            <p className={`text-lg font-bold tabular-nums leading-none ${textClass}`}>{thisWeek}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Week</p>
+          </div>
+        )}
+        <div className="text-center min-w-[48px]">
+          <p className={`text-lg font-bold tabular-nums leading-none ${textClass}`}>{thisMonth}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Month</p>
+        </div>
+        {thisYear !== undefined && (
+          <div className="text-center min-w-[48px]">
+            <p className={`text-lg font-bold tabular-nums leading-none ${textClass}`}>{thisYear}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Year</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TechPerformancePage() {
   const { role } = useCurrentUser();
   if (role === "technician") redirect("/my-schedule");
@@ -49,12 +103,9 @@ export default function TechPerformancePage() {
     dateTo,
   });
   const workload = useQuery(api.dashboardMetrics.technicianWorkload);
-  const noteKpis = useQuery(api.dashboardMetrics.noteBasedKpis, {
-    dateFrom,
-    dateTo,
-  });
+  const tallies = useQuery(api.dashboardMetrics.rollingTallies);
 
-  const isLoading = performance === undefined || workload === undefined || noteKpis === undefined;
+  const isLoading = performance === undefined || workload === undefined || tallies === undefined;
 
   // Merge workload into performance data
   const workloadMap = new Map(
@@ -63,8 +114,16 @@ export default function TechPerformancePage() {
 
   // Merge note KPIs per tech
   const noteKpiMap = new Map(
-    (noteKpis?.perTech ?? []).map((t) => [t.techId, t])
+    (tallies?.perTech ?? []).map((t) => [t.techId, t])
   );
+
+  // Status tally display order
+  const statusOrder = [
+    "swap_required",
+    "return_with_parts",
+    "transfer_to_shop",
+    "billable_to_customer",
+  ] as const;
 
   return (
     <div className="p-4 md:p-6 space-y-6 pb-20 md:pb-6">
@@ -85,11 +144,102 @@ export default function TechPerformancePage() {
         </div>
       ) : (
         <>
+          {/* Calls 2+ Days Old — prominent alert */}
+          {tallies.oldOpenCallsCount > 0 && (
+            <div className="flex items-center gap-3 rounded-xl border-2 border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-5 py-4">
+              <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400 shrink-0" />
+              <div>
+                <p className="text-lg font-bold text-red-600 dark:text-red-400 tabular-nums">
+                  {tallies.oldOpenCallsCount} call{tallies.oldOpenCallsCount !== 1 ? "s" : ""} 2+ days old
+                </p>
+                <p className="text-xs text-red-600/70 dark:text-red-400/70">
+                  Open service calls older than 48 hours need immediate attention
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Rolling Tallies */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Completed Calls */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Completed Calls</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <TallyRow
+                  label="Field Calls Completed"
+                  today={tallies.completed.today}
+                  thisMonth={tallies.completed.thisMonth}
+                  thisYear={tallies.completed.thisYear}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Swaps / Preventable / Returns */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Flags & Incidents</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <TallyRow
+                  label="Swaps"
+                  today={tallies.swaps.today}
+                  thisWeek={tallies.swaps.thisWeek}
+                  thisMonth={tallies.swaps.thisMonth}
+                  accent="amber"
+                />
+                <TallyRow
+                  label="Preventable"
+                  today={tallies.preventable.today}
+                  thisWeek={tallies.preventable.thisWeek}
+                  thisMonth={tallies.preventable.thisMonth}
+                  accent="red"
+                />
+                <TallyRow
+                  label="Return Required"
+                  today={tallies.returnRequired.today}
+                  thisWeek={tallies.returnRequired.thisWeek}
+                  thisMonth={tallies.returnRequired.thisMonth}
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Current Status Breakdown */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Current Status Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-2">
+                {statusOrder.map((s) => {
+                  const count = tallies.statusCounts[s] ?? 0;
+                  const colors = STATUS_COLORS[s];
+                  return (
+                    <div
+                      key={s}
+                      className={`rounded-lg border-l-4 ${colors.border} px-3 py-2.5 ${colors.bg}`}
+                    >
+                      <p className={`text-2xl font-bold tabular-nums ${colors.text}`}>
+                        {count}
+                      </p>
+                      <p className={`text-xs font-medium ${colors.text} opacity-80`}>
+                        {STATUS_LABELS[s]}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Summary KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <KpiCard
               label="Total Completed"
               value={performance.summary.totalCompleted}
+              subtitle="selected period"
               color="green"
             />
             <KpiCard
@@ -106,30 +256,6 @@ export default function TechPerformancePage() {
               label="Total Active"
               value={workload.reduce((s, w) => s + w.total, 0)}
               color="neutral"
-            />
-          </div>
-
-          {/* Note-Based KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <KpiCard
-              label="Total Swaps"
-              value={noteKpis.swapCount}
-              color={noteKpis.swapCount > 0 ? "yellow" : "green"}
-            />
-            <KpiCard
-              label="Preventable Calls"
-              value={noteKpis.preventableCount}
-              color={noteKpis.preventableCount > 0 ? "red" : "green"}
-            />
-            <KpiCard
-              label="Return Required"
-              value={noteKpis.returnRequiredCount}
-              color={noteKpis.returnRequiredCount > 0 ? "yellow" : "green"}
-            />
-            <KpiCard
-              label="Calls 2+ Days Old"
-              value={noteKpis.oldOpenCallsCount}
-              color={noteKpis.oldOpenCallsCount === 0 ? "green" : noteKpis.oldOpenCallsCount <= 3 ? "yellow" : "red"}
             />
           </div>
 
