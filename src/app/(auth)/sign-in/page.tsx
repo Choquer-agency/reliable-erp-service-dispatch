@@ -35,7 +35,7 @@ export default function SignInPage() {
     <Card>
       <CardHeader className="text-center">
         <div className="flex justify-center mb-2">
-          <Image src="/logo.avif" alt="Reliable Equipment Rentals" width={200} height={65} className="h-12 w-auto" priority />
+          <Image src="/logo.avif" alt="Reliable Equipment Rentals" width={240} height={78} className="h-16 w-auto" priority />
         </div>
         <CardDescription>Sign in to your account</CardDescription>
       </CardHeader>

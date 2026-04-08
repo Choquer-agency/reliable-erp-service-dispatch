@@ -52,13 +52,13 @@ export function Sidebar() {
 
   return (
     <aside className="hidden md:flex md:flex-col md:w-48 md:fixed md:inset-y-0 border-r bg-sidebar text-sidebar-foreground">
-      <div className="flex h-16 items-center px-3">
+      <div className="flex items-center px-2 py-3">
         <Image
           src="/logo.avif"
           alt="Reliable Equipment Rentals"
           width={180}
           height={58}
-          className="h-12 w-auto"
+          className="w-full h-auto"
           priority
         />
       </div>
