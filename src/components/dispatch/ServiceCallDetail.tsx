@@ -338,7 +338,7 @@ export function ServiceCallDetail({ callId, onClose }: ServiceCallDetailProps) {
                     <div className="space-y-1">
                       <Label className="text-xs">Technician</Label>
                       <Select value={assignTechId} onValueChange={(v) => v && setAssignTechId(v)}>
-                        <SelectTrigger className="h-10 rounded-lg px-4 text-sm font-semibold">
+                        <SelectTrigger className="w-full h-8 rounded-md px-3 text-sm font-normal">
                           <div className="flex items-center gap-2.5">
                             {assignTechId && technicians ? (
                               <>

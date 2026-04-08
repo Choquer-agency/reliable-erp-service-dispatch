@@ -176,7 +176,7 @@ export function NotesThread({ serviceCallId, mobile = false }: NotesThreadProps)
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Type a message..."
-            className="text-sm min-h-[60px]"
+            className="text-sm min-h-[60px] rounded-md"
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 handleSubmit();
@@ -185,7 +185,7 @@ export function NotesThread({ serviceCallId, mobile = false }: NotesThreadProps)
           />
           <div className="flex items-center gap-2">
             <Select value={noteType} onValueChange={(v) => v && setNoteType(v)}>
-              <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectTrigger className="flex-1 h-8 rounded-md text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -199,7 +199,7 @@ export function NotesThread({ serviceCallId, mobile = false }: NotesThreadProps)
             <Button
               onClick={handleSubmit}
               disabled={!content.trim() || sending}
-              className="gap-1 h-9 text-sm"
+              className="gap-1 h-8 rounded-md text-sm"
             >
               <Send className="h-3.5 w-3.5" />
               Send
