@@ -26,10 +26,10 @@ interface NotesThreadProps {
 const NOTE_TYPE_LABELS: Record<string, string> = {
   message: "Message",
   general: "General",
-  parts_needed: "Parts Needed",
   return_required: "Return Required",
   swap: "Swap",
-  status_update: "Status Update",
+  preventable: "Preventable",
+  swap_required: "Swap Required",
 };
 
 export function NotesThread({ serviceCallId, mobile = false }: NotesThreadProps) {
@@ -55,7 +55,7 @@ export function NotesThread({ serviceCallId, mobile = false }: NotesThreadProps)
       await createNote({
         serviceCallId,
         content: content.trim(),
-        noteType: noteType as "message" | "general" | "parts_needed" | "return_required" | "swap" | "status_update",
+        noteType: noteType as "message" | "general" | "return_required" | "swap" | "preventable" | "swap_required",
       });
       setContent("");
     } catch {

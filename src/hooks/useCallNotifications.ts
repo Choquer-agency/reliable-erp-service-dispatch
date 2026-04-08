@@ -41,8 +41,8 @@ export function useCallNotifications(calls: CallSnapshot[] | undefined) {
 
       // Status changed
       if (prevStatus && prevStatus !== call.status) {
-        if (call.status === "on_hold") {
-          toast.warning(`${call.rNumber} put on hold`, {
+        if (call.status === "swap_required" || call.status === "return_with_parts" || call.status === "transfer_to_shop") {
+          toast.warning(`${call.rNumber} status changed`, {
             description: call.customerName,
           });
         } else if (call.status === "completed") {

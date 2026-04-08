@@ -12,9 +12,8 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { type ServiceCallStatus } from "@/lib/statusConfig";
+import { STATUS_LABELS, type ServiceCallStatus } from "@/lib/statusConfig";
 
 interface StatusUpdateSheetProps {
   call: Doc<"serviceCalls"> | null;
@@ -22,7 +21,7 @@ interface StatusUpdateSheetProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type FlowState = "actions" | "hold_reason" | "confirm_complete" | "confirm_start";
+type FlowState = "actions" | "confirm_complete" | "confirm_status";
 
 export function StatusUpdateSheet({
   call,
@@ -30,18 +29,16 @@ export function StatusUpdateSheet({
   onOpenChange,
 }: StatusUpdateSheetProps) {
   const updateStatus = useMutation(api.serviceCalls.updateStatus);
-  const updateCall = useMutation(api.serviceCalls.update);
-  const createNote = useMutation(api.callNotes.create);
 
   const [flowState, setFlowState] = useState<FlowState>("actions");
-  const [holdReason, setHoldReason] = useState("");
+  const [pendingStatus, setPendingStatus] = useState<ServiceCallStatus | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const status = (call?.status ?? "unassigned") as ServiceCallStatus;
 
   const reset = () => {
     setFlowState("actions");
-    setHoldReason("");
+    setPendingStatus(null);
     setIsSubmitting(false);
   };
 
@@ -55,26 +52,7 @@ export function StatusUpdateSheet({
     setIsSubmitting(true);
     try {
       await updateStatus({ id: call._id, status: newStatus });
-
-      if (newStatus === "on_hold" && holdReason.trim()) {
-        await updateCall({
-          id: call._id,
-          requiresReturn: true,
-          returnReason: holdReason.trim(),
-        });
-        await createNote({
-          serviceCallId: call._id,
-          content: holdReason.trim(),
-          noteType: "return_required",
-        });
-      }
-
-      const labels: Record<string, string> = {
-        in_progress: "Job started",
-        on_hold: "Job put on hold",
-        completed: "Job completed",
-      };
-      toast.success(labels[newStatus] ?? "Status updated");
+      toast.success("Status updated");
       handleOpenChange(false);
     } catch {
       toast.error("Failed to update status");
@@ -109,17 +87,35 @@ export function StatusUpdateSheet({
           {flowState === "actions" && (
             <>
               {status === "assigned" && (
-                <Button
-                  onClick={() => setFlowState("confirm_start")}
-                  disabled={isSubmitting}
-                  className="w-full min-h-[56px] text-lg font-bold rounded-xl bg-green-600 hover:bg-green-700 text-white"
-                >
-                  Start Job
-                </Button>
-              )}
-
-              {status === "in_progress" && (
                 <>
+                  <Button
+                    onClick={() => { setPendingStatus("swap_required"); setFlowState("confirm_status"); }}
+                    disabled={isSubmitting}
+                    className="w-full min-h-[56px] text-lg font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
+                  >
+                    Unit Swap Required
+                  </Button>
+                  <Button
+                    onClick={() => { setPendingStatus("return_with_parts"); setFlowState("confirm_status"); }}
+                    disabled={isSubmitting}
+                    className="w-full min-h-[56px] text-lg font-bold rounded-xl bg-orange-500 hover:bg-orange-600 text-white"
+                  >
+                    Need to Return with Parts
+                  </Button>
+                  <Button
+                    onClick={() => { setPendingStatus("transfer_to_shop"); setFlowState("confirm_status"); }}
+                    disabled={isSubmitting}
+                    className="w-full min-h-[56px] text-lg font-bold rounded-xl bg-purple-500 hover:bg-purple-600 text-white"
+                  >
+                    Transfer Repair to Shop
+                  </Button>
+                  <Button
+                    onClick={() => { setPendingStatus("billable_to_customer"); setFlowState("confirm_status"); }}
+                    disabled={isSubmitting}
+                    className="w-full min-h-[56px] text-lg font-bold rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white"
+                  >
+                    Billable to Customer
+                  </Button>
                   <Button
                     onClick={() => setFlowState("confirm_complete")}
                     disabled={isSubmitting}
@@ -127,24 +123,17 @@ export function StatusUpdateSheet({
                   >
                     Mark Complete
                   </Button>
-                  <Button
-                    onClick={() => setFlowState("hold_reason")}
-                    disabled={isSubmitting}
-                    className="w-full min-h-[56px] text-lg font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
-                  >
-                    Put On Hold
-                  </Button>
                 </>
               )}
 
-              {status === "on_hold" && (
+              {(status === "swap_required" || status === "return_with_parts" || status === "transfer_to_shop" || status === "billable_to_customer") && (
                 <>
                   <Button
-                    onClick={() => setFlowState("confirm_start")}
+                    onClick={() => { setPendingStatus("assigned"); setFlowState("confirm_status"); }}
                     disabled={isSubmitting}
                     className="w-full min-h-[56px] text-lg font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
                   >
-                    Resume Job
+                    Back to Scheduled
                   </Button>
                   <Button
                     onClick={() => setFlowState("confirm_complete")}
@@ -161,39 +150,6 @@ export function StatusUpdateSheet({
                   This job is already completed.
                 </p>
               )}
-            </>
-          )}
-
-          {/* Hold reason flow */}
-          {flowState === "hold_reason" && (
-            <>
-              <p className="text-sm font-medium">
-                Why is this job being put on hold?
-              </p>
-              <Textarea
-                value={holdReason}
-                onChange={(e) => setHoldReason(e.target.value)}
-                placeholder="e.g. Waiting for parts, need to return with equipment..."
-                className="min-h-[100px] text-base"
-                autoFocus
-              />
-              <Button
-                onClick={() => handleTransition("on_hold")}
-                disabled={isSubmitting || !holdReason.trim()}
-                className="w-full min-h-[56px] text-lg font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
-              >
-                {isSubmitting ? "Updating..." : "Confirm — Put On Hold"}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setFlowState("actions");
-                  setHoldReason("");
-                }}
-                className="w-full min-h-[48px]"
-              >
-                Cancel
-              </Button>
             </>
           )}
 
@@ -220,30 +176,22 @@ export function StatusUpdateSheet({
             </>
           )}
 
-          {/* Confirm start/resume flow */}
-          {flowState === "confirm_start" && (
+          {/* Confirm status change flow */}
+          {flowState === "confirm_status" && pendingStatus && (
             <>
               <p className="text-center text-sm font-medium py-2">
-                {status === "on_hold" ? "Resume this job?" : "Start this job?"}
+                Change status to {STATUS_LABELS[pendingStatus]}?
               </p>
               <Button
-                onClick={() => handleTransition("in_progress")}
+                onClick={() => handleTransition(pendingStatus)}
                 disabled={isSubmitting}
-                className={`w-full min-h-[56px] text-lg font-bold rounded-xl text-white ${
-                  status === "on_hold"
-                    ? "bg-blue-600 hover:bg-blue-700"
-                    : "bg-green-600 hover:bg-green-700"
-                }`}
+                className="w-full min-h-[56px] text-lg font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
               >
-                {isSubmitting
-                  ? "Updating..."
-                  : status === "on_hold"
-                    ? "Yes, Resume"
-                    : "Yes, Start Job"}
+                {isSubmitting ? "Updating..." : "Yes, Confirm"}
               </Button>
               <Button
                 variant="ghost"
-                onClick={() => setFlowState("actions")}
+                onClick={() => { setFlowState("actions"); setPendingStatus(null); }}
                 className="w-full min-h-[48px]"
               >
                 Cancel

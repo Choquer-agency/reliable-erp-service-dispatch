@@ -7,9 +7,10 @@ import { KanbanColumn } from "./KanbanColumn";
 const KANBAN_STATUSES: ServiceCallStatus[] = [
   "unassigned",
   "assigned",
-  "in_progress",
-  "on_hold",
-  "needs_return",
+  "swap_required",
+  "return_with_parts",
+  "transfer_to_shop",
+  "billable_to_customer",
 ];
 
 interface ServiceCallsKanbanViewProps {

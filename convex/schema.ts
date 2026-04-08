@@ -36,9 +36,10 @@ export default defineSchema({
     status: v.union(
       v.literal("unassigned"),
       v.literal("assigned"),
-      v.literal("in_progress"),
-      v.literal("on_hold"),
-      v.literal("needs_return"),
+      v.literal("swap_required"),
+      v.literal("return_with_parts"),
+      v.literal("transfer_to_shop"),
+      v.literal("billable_to_customer"),
       v.literal("completed")
     ),
     customerName: v.string(),
@@ -85,10 +86,10 @@ export default defineSchema({
     noteType: v.union(
       v.literal("general"),
       v.literal("message"),
-      v.literal("parts_needed"),
       v.literal("return_required"),
       v.literal("swap"),
-      v.literal("status_update")
+      v.literal("preventable"),
+      v.literal("swap_required")
     ),
     authorRole: v.optional(
       v.union(

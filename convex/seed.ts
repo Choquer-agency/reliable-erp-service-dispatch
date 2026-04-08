@@ -209,7 +209,7 @@ export const seedData = internalMutation({
       authorName: "Surendra Reddy",
       content:
         "Checked fault code E47 — tilt sensor connector was corroded. Cleaned and reseated but may need full sensor replacement. Ordering part.",
-      noteType: "parts_needed",
+      noteType: "swap_required",
     });
 
     await ctx.db.insert("callNotes", {

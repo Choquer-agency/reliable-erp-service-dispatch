@@ -23,10 +23,10 @@ export const create = mutation({
     noteType: v.union(
       v.literal("general"),
       v.literal("message"),
-      v.literal("parts_needed"),
       v.literal("return_required"),
       v.literal("swap"),
-      v.literal("status_update")
+      v.literal("preventable"),
+      v.literal("swap_required")
     ),
   },
   handler: async (ctx, args) => {

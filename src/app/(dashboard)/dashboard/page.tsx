@@ -7,7 +7,6 @@ import { Id } from "../../../../convex/_generated/dataModel";
 import {
   ClipboardList,
   UserCheck,
-  Clock,
   CheckCircle,
   AlertCircle,
 } from "lucide-react";
@@ -74,8 +73,7 @@ export default function DashboardPage() {
   const stats = [
     { label: "Total Calls", value: callStats?.total ?? 0, icon: ClipboardList, color: "text-foreground" },
     { label: "Unassigned", value: callStats?.unassigned ?? 0, icon: AlertCircle, color: (callStats?.unassigned ?? 0) > 0 ? "text-orange-500" : "text-foreground" },
-    { label: "Assigned", value: callStats?.assigned ?? 0, icon: UserCheck, color: "text-blue-500" },
-    { label: "In Progress", value: callStats?.inProgress ?? 0, icon: Clock, color: "text-amber-500" },
+    { label: "Scheduled", value: callStats?.assigned ?? 0, icon: UserCheck, color: "text-blue-500" },
     { label: "Completed", value: callStats?.completed ?? 0, icon: CheckCircle, color: "text-green-500" },
   ];
 

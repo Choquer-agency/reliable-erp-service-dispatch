@@ -1,9 +1,10 @@
 export type ServiceCallStatus =
   | "unassigned"
   | "assigned"
-  | "in_progress"
-  | "on_hold"
-  | "needs_return"
+  | "swap_required"
+  | "return_with_parts"
+  | "transfer_to_shop"
+  | "billable_to_customer"
   | "completed";
 
 export const STATUS_COLORS: Record<
@@ -24,26 +25,33 @@ export const STATUS_COLORS: Record<
     badge: "bg-blue-100 text-blue-700",
     dot: "bg-blue-500",
   },
-  in_progress: {
+  swap_required: {
     border: "border-l-amber-500",
     bg: "bg-amber-50",
     text: "text-amber-600",
     badge: "bg-amber-100 text-amber-700",
     dot: "bg-amber-500",
   },
-  on_hold: {
+  return_with_parts: {
     border: "border-l-orange-500",
     bg: "bg-orange-50",
     text: "text-orange-600",
     badge: "bg-orange-100 text-orange-700",
     dot: "bg-orange-500",
   },
-  needs_return: {
+  transfer_to_shop: {
     border: "border-l-purple-500",
     bg: "bg-purple-50",
     text: "text-purple-600",
     badge: "bg-purple-100 text-purple-700",
     dot: "bg-purple-500",
+  },
+  billable_to_customer: {
+    border: "border-l-cyan-500",
+    bg: "bg-cyan-50",
+    text: "text-cyan-600",
+    badge: "bg-cyan-100 text-cyan-700",
+    dot: "bg-cyan-500",
   },
   completed: {
     border: "border-l-green-500",
@@ -57,17 +65,19 @@ export const STATUS_COLORS: Record<
 export const STATUS_LABELS: Record<ServiceCallStatus, string> = {
   unassigned: "Unassigned",
   assigned: "Scheduled",
-  in_progress: "In Progress",
-  on_hold: "On Hold",
-  needs_return: "Needs Return",
+  swap_required: "Unit Swap Required",
+  return_with_parts: "Need to Return with Parts",
+  transfer_to_shop: "Transfer Repair to Shop",
+  billable_to_customer: "Billable to Customer",
   completed: "Completed",
 };
 
 export const ALLOWED_TRANSITIONS: Record<ServiceCallStatus, ServiceCallStatus[]> = {
   unassigned: ["assigned"],
-  assigned: ["in_progress", "unassigned"],
-  in_progress: ["on_hold", "completed", "needs_return"],
-  on_hold: ["in_progress", "completed"],
-  needs_return: ["unassigned"],
+  assigned: ["swap_required", "return_with_parts", "transfer_to_shop", "billable_to_customer", "completed", "unassigned"],
+  swap_required: ["assigned", "completed"],
+  return_with_parts: ["assigned", "completed"],
+  transfer_to_shop: ["assigned", "completed"],
+  billable_to_customer: ["assigned", "completed"],
   completed: [],
 };

@@ -6,9 +6,10 @@ import { logActivity } from "./activityLog";
 const statusValidator = v.union(
   v.literal("unassigned"),
   v.literal("assigned"),
-  v.literal("in_progress"),
-  v.literal("on_hold"),
-  v.literal("needs_return"),
+  v.literal("swap_required"),
+  v.literal("return_with_parts"),
+  v.literal("transfer_to_shop"),
+  v.literal("billable_to_customer"),
   v.literal("completed")
 );
 
@@ -193,16 +194,28 @@ export const getStats = query({
         .withIndex("by_status", (q) => q.eq("status", "assigned"))
         .take(10000)
     ).length;
-    const inProgress = (
+    const swapRequired = (
       await ctx.db
         .query("serviceCalls")
-        .withIndex("by_status", (q) => q.eq("status", "in_progress"))
+        .withIndex("by_status", (q) => q.eq("status", "swap_required"))
         .take(10000)
     ).length;
-    const onHold = (
+    const returnWithParts = (
       await ctx.db
         .query("serviceCalls")
-        .withIndex("by_status", (q) => q.eq("status", "on_hold"))
+        .withIndex("by_status", (q) => q.eq("status", "return_with_parts"))
+        .take(10000)
+    ).length;
+    const transferToShop = (
+      await ctx.db
+        .query("serviceCalls")
+        .withIndex("by_status", (q) => q.eq("status", "transfer_to_shop"))
+        .take(10000)
+    ).length;
+    const billableToCustomer = (
+      await ctx.db
+        .query("serviceCalls")
+        .withIndex("by_status", (q) => q.eq("status", "billable_to_customer"))
         .take(10000)
     ).length;
     const completed = (
@@ -211,20 +224,15 @@ export const getStats = query({
         .withIndex("by_status", (q) => q.eq("status", "completed"))
         .take(10000)
     ).length;
-    const needsReturn = (
-      await ctx.db
-        .query("serviceCalls")
-        .withIndex("by_status", (q) => q.eq("status", "needs_return"))
-        .take(10000)
-    ).length;
 
     return {
-      total: unassigned + assigned + inProgress + onHold + needsReturn + completed,
+      total: unassigned + assigned + swapRequired + returnWithParts + transferToShop + billableToCustomer + completed,
       unassigned,
       assigned,
-      inProgress,
-      onHold,
-      needsReturn,
+      swapRequired,
+      returnWithParts,
+      transferToShop,
+      billableToCustomer,
       completed,
     };
   },
@@ -308,10 +316,11 @@ export const update = mutation({
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   unassigned: ["assigned"],
-  assigned: ["in_progress", "unassigned"],
-  in_progress: ["on_hold", "completed", "needs_return"],
-  on_hold: ["in_progress", "completed"],
-  needs_return: ["unassigned"],
+  assigned: ["swap_required", "return_with_parts", "transfer_to_shop", "billable_to_customer", "completed", "unassigned"],
+  swap_required: ["assigned", "completed"],
+  return_with_parts: ["assigned", "completed"],
+  transfer_to_shop: ["assigned", "completed"],
+  billable_to_customer: ["assigned", "completed"],
   completed: [],
 };
 
@@ -364,7 +373,7 @@ export const updateStatus = mutation({
     if (args.status === "completed") {
       updates.dateCompleted = new Date().toISOString().split("T")[0];
     }
-    if (args.status === "needs_return") {
+    if (args.status === "return_with_parts") {
       updates.requiresReturn = true;
     }
     if (args.status === "unassigned") {
@@ -383,9 +392,10 @@ export const updateStatus = mutation({
     const statusLabels: Record<string, string> = {
       unassigned: "Unassigned",
       assigned: "Scheduled",
-      in_progress: "In Progress",
-      on_hold: "On Hold",
-      needs_return: "Needs Return",
+      swap_required: "Unit Swap Required",
+      return_with_parts: "Need to Return with Parts",
+      transfer_to_shop: "Transfer Repair to Shop",
+      billable_to_customer: "Billable to Customer",
       completed: "Completed",
     };
     await logActivity(ctx, args.id, actorName, "status_changed", `changed status to ${statusLabels[args.status] ?? args.status}`);

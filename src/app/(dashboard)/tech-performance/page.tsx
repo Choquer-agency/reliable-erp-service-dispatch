@@ -49,12 +49,21 @@ export default function TechPerformancePage() {
     dateTo,
   });
   const workload = useQuery(api.dashboardMetrics.technicianWorkload);
+  const noteKpis = useQuery(api.dashboardMetrics.noteBasedKpis, {
+    dateFrom,
+    dateTo,
+  });
 
-  const isLoading = performance === undefined || workload === undefined;
+  const isLoading = performance === undefined || workload === undefined || noteKpis === undefined;
 
   // Merge workload into performance data
   const workloadMap = new Map(
     (workload ?? []).map((w) => [w.techId, w])
+  );
+
+  // Merge note KPIs per tech
+  const noteKpiMap = new Map(
+    (noteKpis?.perTech ?? []).map((t) => [t.techId, t])
   );
 
   return (
@@ -100,6 +109,30 @@ export default function TechPerformancePage() {
             />
           </div>
 
+          {/* Note-Based KPI Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <KpiCard
+              label="Total Swaps"
+              value={noteKpis.swapCount}
+              color={noteKpis.swapCount > 0 ? "yellow" : "green"}
+            />
+            <KpiCard
+              label="Preventable Calls"
+              value={noteKpis.preventableCount}
+              color={noteKpis.preventableCount > 0 ? "red" : "green"}
+            />
+            <KpiCard
+              label="Return Required"
+              value={noteKpis.returnRequiredCount}
+              color={noteKpis.returnRequiredCount > 0 ? "yellow" : "green"}
+            />
+            <KpiCard
+              label="Calls 2+ Days Old"
+              value={noteKpis.oldOpenCallsCount}
+              color={noteKpis.oldOpenCallsCount === 0 ? "green" : noteKpis.oldOpenCallsCount <= 3 ? "yellow" : "red"}
+            />
+          </div>
+
           {/* Technician Comparison Table */}
           <Card>
             <CardHeader>
@@ -119,12 +152,15 @@ export default function TechPerformancePage() {
                         Avg Time
                       </TableHead>
                       <TableHead className="text-right">Return Rate</TableHead>
+                      <TableHead className="text-right hidden lg:table-cell">Swaps</TableHead>
+                      <TableHead className="text-right hidden lg:table-cell">Preventable</TableHead>
                       <TableHead className="text-right">Active</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {performance.technicians.map((tech) => {
                       const wl = workloadMap.get(tech.techId);
+                      const nk = noteKpiMap.get(tech.techId);
                       return (
                         <TableRow key={tech.techId}>
                           <TableCell>
@@ -168,6 +204,12 @@ export default function TechPerformancePage() {
                               {tech.returnRate}%
                             </span>
                           </TableCell>
+                          <TableCell className="text-right tabular-nums hidden lg:table-cell">
+                            {nk?.swapCount ?? 0}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums hidden lg:table-cell">
+                            {nk?.preventableCount ?? 0}
+                          </TableCell>
                           <TableCell className="text-right tabular-nums">
                             {wl ? wl.total : 0}
                           </TableCell>
@@ -193,10 +235,10 @@ export default function TechPerformancePage() {
                   color: w.techColor,
                 }))}
               />
-              <div className="flex gap-4 mt-4 text-xs text-muted-foreground">
+              <div className="flex gap-4 mt-4 text-xs text-muted-foreground flex-wrap">
                 {workload.map((w) => (
                   <span key={w.techId}>
-                    {w.techName}: {w.assigned}A / {w.inProgress}IP / {w.onHold}OH
+                    {w.techName}: {w.assigned}S / {w.swapRequired}SW / {w.returnWithParts}RP / {w.transferToShop}TS
                   </span>
                 ))}
               </div>

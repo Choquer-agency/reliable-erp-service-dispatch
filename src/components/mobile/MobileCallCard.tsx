@@ -49,11 +49,15 @@ export function MobileCallCard({
                 ? "#9ca3af"
                 : status === "assigned"
                   ? "#3b82f6"
-                  : status === "in_progress"
+                  : status === "swap_required"
                     ? "#f59e0b"
-                    : status === "on_hold"
+                    : status === "return_with_parts"
                       ? "#f97316"
-                      : "#6b7280",
+                      : status === "transfer_to_shop"
+                        ? "#a855f7"
+                        : status === "billable_to_customer"
+                          ? "#06b6d4"
+                          : "#6b7280",
             }}
           >
             #{call.callOrder ?? "–"}
@@ -130,23 +134,31 @@ export function MobileCallCard({
                   backgroundColor:
                     status === "assigned"
                       ? "#dbeafe"
-                      : status === "in_progress"
+                      : status === "swap_required"
                         ? "#fef3c7"
-                        : status === "on_hold"
+                        : status === "return_with_parts"
                           ? "#ffedd5"
-                          : status === "completed"
-                            ? "#dcfce7"
-                            : "#f3f4f6",
+                          : status === "transfer_to_shop"
+                            ? "#f3e8ff"
+                            : status === "billable_to_customer"
+                              ? "#cffafe"
+                              : status === "completed"
+                                ? "#dcfce7"
+                                : "#f3f4f6",
                   color:
                     status === "assigned"
                       ? "#1d4ed8"
-                      : status === "in_progress"
+                      : status === "swap_required"
                         ? "#92400e"
-                        : status === "on_hold"
+                        : status === "return_with_parts"
                           ? "#c2410c"
-                          : status === "completed"
-                            ? "#15803d"
-                            : "#374151",
+                          : status === "transfer_to_shop"
+                            ? "#7e22ce"
+                            : status === "billable_to_customer"
+                              ? "#0e7490"
+                              : status === "completed"
+                                ? "#15803d"
+                                : "#374151",
                 }}
               >
                 {STATUS_LABELS[status]}

@@ -7,9 +7,10 @@ import { ListGroupSection } from "./ListGroupSection";
 const STATUS_ORDER: ServiceCallStatus[] = [
   "unassigned",
   "assigned",
-  "in_progress",
-  "on_hold",
-  "needs_return",
+  "swap_required",
+  "return_with_parts",
+  "transfer_to_shop",
+  "billable_to_customer",
   "completed",
 ];
 

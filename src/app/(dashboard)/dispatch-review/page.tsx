@@ -172,12 +172,12 @@ export default function DispatchReviewPage() {
             />
             <KpiCard
               label="Stuck Calls"
-              value={backlog.onHoldCount + backlog.needsReturnCount}
-              subtitle={`${backlog.onHoldCount} on hold, ${backlog.needsReturnCount} needs return`}
+              value={backlog.swapRequiredCount + backlog.returnWithPartsCount + backlog.transferToShopCount}
+              subtitle={`${backlog.swapRequiredCount} swap, ${backlog.returnWithPartsCount} return, ${backlog.transferToShopCount} shop`}
               color={
-                backlog.onHoldCount + backlog.needsReturnCount === 0
+                backlog.swapRequiredCount + backlog.returnWithPartsCount + backlog.transferToShopCount === 0
                   ? "green"
-                  : backlog.onHoldCount + backlog.needsReturnCount <= 3
+                  : backlog.swapRequiredCount + backlog.returnWithPartsCount + backlog.transferToShopCount <= 3
                     ? "yellow"
                     : "red"
               }
@@ -203,14 +203,14 @@ export default function DispatchReviewPage() {
                 </p>
               ) : (
                 <div className="space-y-5">
-                  {/* Full path: Unassigned → Assigned → In Progress → Completed */}
+                  {/* Full path: Unassigned → Scheduled → Status → Completed */}
                   <div className="overflow-x-auto">
                     <div className="flex items-center min-w-[600px]">
                       <StageBox label="Unassigned" color="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300" />
                       <StageArrow avgMinutes={lifecycle.avgMinutes.unassignedToAssigned} samples={lifecycle.sampleCounts.unassignedToAssigned} />
-                      <StageBox label="Assigned" color="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300" />
+                      <StageBox label="Scheduled" color="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300" />
                       <StageArrow avgMinutes={lifecycle.avgMinutes.assignedToInProgress} samples={lifecycle.sampleCounts.assignedToInProgress} />
-                      <StageBox label="In Progress" color="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" />
+                      <StageBox label="In Field" color="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" />
                       <StageArrow avgMinutes={lifecycle.avgMinutes.inProgressToCompleted} samples={lifecycle.sampleCounts.inProgressToCompleted} />
                       <StageBox label="Completed" color="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300" />
                       <div className="pl-4 ml-4 border-l-2 border-muted-foreground/20 flex flex-col items-end shrink-0">
@@ -220,14 +220,14 @@ export default function DispatchReviewPage() {
                     </div>
                   </div>
 
-                  {/* Skipped path: Assigned → Completed (no In Progress) */}
+                  {/* Skipped path: Scheduled → Completed directly */}
                   {lifecycle.skippedInProgressCount > 0 && (
                     <div className="overflow-x-auto">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium mb-2">
-                        Skipped In Progress ({lifecycle.skippedInProgressCount} calls)
+                        Direct Completion ({lifecycle.skippedInProgressCount} calls)
                       </p>
                       <div className="flex items-center min-w-[600px]">
-                        <StageBox label="Assigned" color="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300" />
+                        <StageBox label="Scheduled" color="bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300" />
                         <StageArrow avgMinutes={lifecycle.avgMinutes.assignedToCompleted} samples={lifecycle.sampleCounts.assignedToCompleted} />
                         <StageBox label="Completed" color="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300" />
                         <div className="pl-4 ml-4 border-l-2 border-transparent flex flex-col items-end shrink-0 invisible">
@@ -326,14 +326,18 @@ export default function DispatchReviewPage() {
                           <Badge
                             variant="outline"
                             className={
-                              call.status === "on_hold"
-                                ? "border-orange-300 text-orange-600"
-                                : "border-amber-300 text-amber-600"
+                              call.status === "swap_required"
+                                ? "border-amber-300 text-amber-600"
+                                : call.status === "return_with_parts"
+                                  ? "border-orange-300 text-orange-600"
+                                  : "border-purple-300 text-purple-600"
                             }
                           >
-                            {call.status === "on_hold"
-                              ? "On Hold"
-                              : "Needs Return"}
+                            {call.status === "swap_required"
+                              ? "Unit Swap Required"
+                              : call.status === "return_with_parts"
+                                ? "Return with Parts"
+                                : "Transfer to Shop"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">

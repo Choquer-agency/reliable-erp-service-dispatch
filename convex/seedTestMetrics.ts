@@ -64,10 +64,10 @@ export const seedTestData = internalMutation({
     interface CallDef {
       dateOpened: string;
       dateCompleted: string | undefined;
-      status: "completed" | "assigned" | "in_progress" | "on_hold" | "needs_return";
+      status: "completed" | "assigned" | "swap_required" | "return_with_parts" | "transfer_to_shop" | "billable_to_customer";
       hasReturn: boolean;
       skipInProgress?: boolean;      // tech went Assigned → Completed directly
-      wentOnHold?: boolean;          // went through on_hold before completing
+      wentSwapRequired?: boolean;     // went through swap_required before completing
       assignDelayMin: number;
       startDelayMin: number;
       workDurationMin: number;
@@ -80,7 +80,7 @@ export const seedTestData = internalMutation({
       { dateOpened: "2026-03-24", dateCompleted: "2026-03-24", status: "completed", hasReturn: false, skipInProgress: true, assignDelayMin: 8, startDelayMin: 0, workDurationMin: 145 },
       { dateOpened: "2026-03-24", dateCompleted: "2026-03-25", status: "completed", hasReturn: true,  assignDelayMin: 35, startDelayMin: 180, workDurationMin: 420 },
       { dateOpened: "2026-03-25", dateCompleted: "2026-03-25", status: "completed", hasReturn: false, assignDelayMin: 12, startDelayMin: 45, workDurationMin: 120 },
-      { dateOpened: "2026-03-25", dateCompleted: "2026-03-26", status: "completed", hasReturn: false, wentOnHold: true, assignDelayMin: 90, startDelayMin: 240, workDurationMin: 300 },
+      { dateOpened: "2026-03-25", dateCompleted: "2026-03-26", status: "completed", hasReturn: false, wentSwapRequired: true, assignDelayMin: 90, startDelayMin: 240, workDurationMin: 300 },
       { dateOpened: "2026-03-26", dateCompleted: "2026-03-26", status: "completed", hasReturn: false, assignDelayMin: 15, startDelayMin: 70, workDurationMin: 150 },
       { dateOpened: "2026-03-26", dateCompleted: "2026-03-27", status: "completed", hasReturn: false, assignDelayMin: 55, startDelayMin: 200, workDurationMin: 360 },
       { dateOpened: "2026-03-27", dateCompleted: "2026-03-27", status: "completed", hasReturn: true,  assignDelayMin: 18, startDelayMin: 90, workDurationMin: 210 },
@@ -90,7 +90,7 @@ export const seedTestData = internalMutation({
       { dateOpened: "2026-03-30", dateCompleted: "2026-03-30", status: "completed", hasReturn: false, assignDelayMin: 10, startDelayMin: 55, workDurationMin: 135 },
       { dateOpened: "2026-03-30", dateCompleted: "2026-03-31", status: "completed", hasReturn: false, assignDelayMin: 120, startDelayMin: 300, workDurationMin: 480 },
       { dateOpened: "2026-03-31", dateCompleted: "2026-03-31", status: "completed", hasReturn: false, assignDelayMin: 25, startDelayMin: 80, workDurationMin: 160 },
-      { dateOpened: "2026-03-31", dateCompleted: "2026-04-01", status: "completed", hasReturn: false, wentOnHold: true, assignDelayMin: 40, startDelayMin: 150, workDurationMin: 270 },
+      { dateOpened: "2026-03-31", dateCompleted: "2026-04-01", status: "completed", hasReturn: false, wentSwapRequired: true, assignDelayMin: 40, startDelayMin: 150, workDurationMin: 270 },
       { dateOpened: "2026-04-01", dateCompleted: "2026-04-01", status: "completed", hasReturn: true,  assignDelayMin: 7, startDelayMin: 40, workDurationMin: 100 },
       { dateOpened: "2026-04-01", dateCompleted: "2026-04-02", status: "completed", hasReturn: false, assignDelayMin: 65, startDelayMin: 210, workDurationMin: 350 },
       { dateOpened: "2026-04-02", dateCompleted: "2026-04-02", status: "completed", hasReturn: false, skipInProgress: true, assignDelayMin: 20, startDelayMin: 0, workDurationMin: 130 },
@@ -101,14 +101,14 @@ export const seedTestData = internalMutation({
       // This week (Apr 6-7) — mix of statuses
       { dateOpened: "2026-04-06", dateCompleted: "2026-04-06", status: "completed", hasReturn: false, assignDelayMin: 11, startDelayMin: 45, workDurationMin: 130 },
       { dateOpened: "2026-04-06", dateCompleted: "2026-04-06", status: "completed", hasReturn: false, skipInProgress: true, assignDelayMin: 28, startDelayMin: 0, workDurationMin: 175 },
-      { dateOpened: "2026-04-06", dateCompleted: "2026-04-07", status: "completed", hasReturn: false, wentOnHold: true, assignDelayMin: 50, startDelayMin: 180, workDurationMin: 310 },
-      { dateOpened: "2026-04-06", dateCompleted: undefined,     status: "in_progress", hasReturn: false, assignDelayMin: 35, startDelayMin: 90, workDurationMin: 0 },
-      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "in_progress", hasReturn: false, assignDelayMin: 15, startDelayMin: 60, workDurationMin: 0 },
-      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "in_progress", hasReturn: false, assignDelayMin: 42, startDelayMin: 120, workDurationMin: 0 },
-      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "assigned",    hasReturn: false, assignDelayMin: 20, startDelayMin: 0, workDurationMin: 0 },
-      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "assigned",    hasReturn: false, assignDelayMin: 60, startDelayMin: 0, workDurationMin: 0 },
-      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "on_hold",     hasReturn: false, assignDelayMin: 25, startDelayMin: 75, workDurationMin: 0 },
-      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "needs_return", hasReturn: true, assignDelayMin: 10, startDelayMin: 40, workDurationMin: 0 },
+      { dateOpened: "2026-04-06", dateCompleted: "2026-04-07", status: "completed", hasReturn: false, wentSwapRequired: true, assignDelayMin: 50, startDelayMin: 180, workDurationMin: 310 },
+      { dateOpened: "2026-04-06", dateCompleted: undefined,     status: "assigned",           hasReturn: false, assignDelayMin: 35, startDelayMin: 90, workDurationMin: 0 },
+      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "assigned",           hasReturn: false, assignDelayMin: 15, startDelayMin: 60, workDurationMin: 0 },
+      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "assigned",           hasReturn: false, assignDelayMin: 42, startDelayMin: 120, workDurationMin: 0 },
+      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "assigned",           hasReturn: false, assignDelayMin: 20, startDelayMin: 0, workDurationMin: 0 },
+      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "assigned",           hasReturn: false, assignDelayMin: 60, startDelayMin: 0, workDurationMin: 0 },
+      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "swap_required",      hasReturn: false, assignDelayMin: 25, startDelayMin: 75, workDurationMin: 0 },
+      { dateOpened: "2026-04-07", dateCompleted: undefined,     status: "return_with_parts",  hasReturn: true, assignDelayMin: 10, startDelayMin: 40, workDurationMin: 0 },
     ];
 
     let count = 0;
@@ -162,52 +162,34 @@ export const seedTestData = internalMutation({
         occurredAt: assignedAt,
       });
 
-      // In Progress (skip if tech went Assigned → Completed)
-      const shouldHaveInProgress =
-        !def.skipInProgress &&
-        (def.status === "in_progress" ||
-          def.status === "completed" ||
-          def.status === "on_hold" ||
-          def.status === "needs_return");
-
-      if (shouldHaveInProgress) {
+      // Swap Required (current status or went through it before completing)
+      if (def.status === "swap_required" || def.wentSwapRequired) {
         await ctx.db.insert("activityLog", {
           serviceCallId: callId,
           actorName: tech.name,
           action: "status_changed",
-          detail: "changed status to In Progress",
-          occurredAt: inProgressAt,
-        });
-      }
-
-      // On Hold (current status or went through it before completing)
-      if (def.status === "on_hold" || def.wentOnHold) {
-        await ctx.db.insert("activityLog", {
-          serviceCallId: callId,
-          actorName: tech.name,
-          action: "status_changed",
-          detail: "changed status to On Hold",
+          detail: "changed status to Unit Swap Required",
           occurredAt: inProgressAt + 45 * MIN,
         });
-        // If completed after on_hold, also log back to In Progress
-        if (def.wentOnHold && def.status === "completed") {
+        // If completed after swap_required, also log back to Scheduled
+        if (def.wentSwapRequired && def.status === "completed") {
           await ctx.db.insert("activityLog", {
             serviceCallId: callId,
             actorName: tech.name,
             action: "status_changed",
-            detail: "changed status to In Progress",
+            detail: "changed status to Scheduled",
             occurredAt: inProgressAt + 120 * MIN,
           });
         }
       }
 
-      // Needs Return
-      if (def.status === "needs_return") {
+      // Return with Parts
+      if (def.status === "return_with_parts") {
         await ctx.db.insert("activityLog", {
           serviceCallId: callId,
           actorName: tech.name,
           action: "status_changed",
-          detail: "changed status to Needs Return",
+          detail: "changed status to Need to Return with Parts",
           occurredAt: inProgressAt + 60 * MIN,
         });
       }

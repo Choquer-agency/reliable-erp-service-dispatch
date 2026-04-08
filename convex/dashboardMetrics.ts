@@ -61,10 +61,12 @@ export const technicianPerformance = query({
             )
             .take(50);
 
-          const inProgressLog = logs.find(
+          const firstStatusLog = logs.find(
             (l) =>
               l.action === "status_changed" &&
-              l.detail?.includes("In Progress")
+              l.detail &&
+              !l.detail.includes("Completed") &&
+              !l.detail.includes("Scheduled")
           );
           const completedLog = logs.find(
             (l) =>
@@ -72,8 +74,8 @@ export const technicianPerformance = query({
               l.detail?.includes("Completed")
           );
 
-          if (inProgressLog && completedLog) {
-            const ipTime = inProgressLog.occurredAt ?? inProgressLog._creationTime;
+          if (firstStatusLog && completedLog) {
+            const ipTime = firstStatusLog.occurredAt ?? firstStatusLog._creationTime;
             const cTime = completedLog.occurredAt ?? completedLog._creationTime;
             const hours = (cTime - ipTime) / (1000 * 60 * 60);
             if (hours > 0 && hours < 720) {
@@ -215,10 +217,10 @@ export const technicianWorkload = query({
           techName: tech.name,
           techColor: tech.color,
           assigned: active.filter((c) => c.status === "assigned").length,
-          inProgress: active.filter((c) => c.status === "in_progress").length,
-          onHold: active.filter((c) => c.status === "on_hold").length,
-          needsReturn: active.filter((c) => c.status === "needs_return")
-            .length,
+          swapRequired: active.filter((c) => c.status === "swap_required").length,
+          returnWithParts: active.filter((c) => c.status === "return_with_parts").length,
+          transferToShop: active.filter((c) => c.status === "transfer_to_shop").length,
+          billableToCustomer: active.filter((c) => c.status === "billable_to_customer").length,
           total: active.length,
         };
       })
@@ -380,17 +382,21 @@ export const currentBacklog = query({
     }));
     unassignedWithAge.sort((a, b) => b.ageHours - a.ageHours);
 
-    // Stuck calls (on_hold + needs_return)
-    const onHold = await ctx.db
+    // Stuck calls (swap_required + return_with_parts + transfer_to_shop)
+    const swapRequired = await ctx.db
       .query("serviceCalls")
-      .withIndex("by_status", (q) => q.eq("status", "on_hold"))
+      .withIndex("by_status", (q) => q.eq("status", "swap_required"))
       .take(500);
-    const needsReturn = await ctx.db
+    const returnWithParts = await ctx.db
       .query("serviceCalls")
-      .withIndex("by_status", (q) => q.eq("status", "needs_return"))
+      .withIndex("by_status", (q) => q.eq("status", "return_with_parts"))
+      .take(500);
+    const transferToShop = await ctx.db
+      .query("serviceCalls")
+      .withIndex("by_status", (q) => q.eq("status", "transfer_to_shop"))
       .take(500);
 
-    const stuckCalls = [...onHold, ...needsReturn].map((c) => ({
+    const stuckCalls = [...swapRequired, ...returnWithParts, ...transferToShop].map((c) => ({
       _id: c._id,
       rNumber: c.rNumber,
       customerName: c.customerName,
@@ -416,8 +422,9 @@ export const currentBacklog = query({
             ) / 10
           : 0,
       unassignedCalls: unassignedWithAge.slice(0, 10),
-      onHoldCount: onHold.length,
-      needsReturnCount: needsReturn.length,
+      swapRequiredCount: swapRequired.length,
+      returnWithPartsCount: returnWithParts.length,
+      transferToShopCount: transferToShop.length,
       stuckCalls: stuckCalls.slice(0, 10),
     };
   },
@@ -528,16 +535,16 @@ export const callLifecycle = query({
           l.action === "status_changed" && l.detail?.includes("Completed")
       );
 
-      // Check if call went through on_hold or needs_return (comeback)
-      const hadOnHold = sorted.some(
+      // Check if call went through return/swap statuses (comeback)
+      const hadSwapRequired = sorted.some(
         (l) =>
-          l.action === "status_changed" && l.detail?.includes("On Hold")
+          l.action === "status_changed" && l.detail?.includes("Unit Swap Required")
       );
-      const hadNeedsReturn = sorted.some(
+      const hadReturnWithParts = sorted.some(
         (l) =>
-          l.action === "status_changed" && l.detail?.includes("Needs Return")
+          l.action === "status_changed" && l.detail?.includes("Need to Return with Parts")
       );
-      if (hadOnHold || hadNeedsReturn || call.requiresReturn) {
+      if (hadSwapRequired || hadReturnWithParts || call.requiresReturn) {
         comebackCount++;
       }
 
@@ -597,6 +604,90 @@ export const callLifecycle = query({
         assignedToCompleted: stages.assignedToCompleted.length,
         totalOpenToClose: stages.totalOpenToClose.length,
       },
+    };
+  },
+});
+
+// ─── Note-Based KPIs (Swap / Preventable counts) ───────────────────────────
+
+export const noteBasedKpis = query({
+  args: {
+    dateFrom: v.string(),
+    dateTo: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const dateFromMs = new Date(args.dateFrom).getTime();
+    const dateToMs = new Date(args.dateTo + "T23:59:59").getTime();
+
+    // Get all notes in the period
+    const allNotes = await ctx.db.query("callNotes").take(10000);
+    const notesInPeriod = allNotes.filter(
+      (n) => n._creationTime >= dateFromMs && n._creationTime <= dateToMs
+    );
+
+    const swapCount = notesInPeriod.filter(
+      (n) => n.noteType === "swap_required" || n.noteType === "swap"
+    ).length;
+    const preventableCount = notesInPeriod.filter(
+      (n) => n.noteType === "preventable"
+    ).length;
+    const returnRequiredCount = notesInPeriod.filter(
+      (n) => n.noteType === "return_required"
+    ).length;
+
+    // Calls 2+ days old that are still open
+    const now = Date.now();
+    const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+    const allCalls = await ctx.db.query("serviceCalls").take(5000);
+    const oldOpenCalls = allCalls.filter(
+      (c) =>
+        c.status !== "completed" &&
+        now - c._creationTime >= twoDaysMs
+    );
+
+    // Per-technician swap and preventable counts
+    const technicians = await ctx.db
+      .query("technicians")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .take(50);
+
+    const perTech = await Promise.all(
+      technicians.map(async (tech) => {
+        // Get calls assigned to this tech
+        const techCalls = await ctx.db
+          .query("serviceCalls")
+          .withIndex("by_assignedTechnician", (q) =>
+            q.eq("assignedTechnician", tech._id)
+          )
+          .take(1000);
+        const techCallIds = new Set(techCalls.map((c) => c._id));
+
+        const techNotes = notesInPeriod.filter((n) =>
+          techCallIds.has(n.serviceCallId)
+        );
+
+        return {
+          techId: tech._id,
+          techName: tech.name,
+          swapCount: techNotes.filter(
+            (n) => n.noteType === "swap_required" || n.noteType === "swap"
+          ).length,
+          preventableCount: techNotes.filter(
+            (n) => n.noteType === "preventable"
+          ).length,
+          returnRequiredCount: techNotes.filter(
+            (n) => n.noteType === "return_required"
+          ).length,
+        };
+      })
+    );
+
+    return {
+      swapCount,
+      preventableCount,
+      returnRequiredCount,
+      oldOpenCallsCount: oldOpenCalls.length,
+      perTech,
     };
   },
 });

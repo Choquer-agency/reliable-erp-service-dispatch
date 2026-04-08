@@ -28,8 +28,10 @@ import {
 const STATUS_COLORS: Record<string, string> = {
   unassigned: "bg-gray-100 text-gray-700",
   assigned: "bg-blue-100 text-blue-700",
-  in_progress: "bg-amber-100 text-amber-700",
-  on_hold: "bg-orange-100 text-orange-700",
+  swap_required: "bg-amber-100 text-amber-700",
+  return_with_parts: "bg-orange-100 text-orange-700",
+  transfer_to_shop: "bg-purple-100 text-purple-700",
+  billable_to_customer: "bg-cyan-100 text-cyan-700",
   completed: "bg-green-100 text-green-700",
 };
 

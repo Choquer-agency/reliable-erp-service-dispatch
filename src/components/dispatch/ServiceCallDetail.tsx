@@ -235,14 +235,14 @@ export function ServiceCallDetail({ callId, onClose }: ServiceCallDetailProps) {
                   )}
                 </section>
 
-                {/* Return reason input — only when status is needs_return */}
-                {status === "needs_return" && (
+                {/* Return reason input — only when status requires return */}
+                {status === "return_with_parts" && (
                   <section className="space-y-1">
                     <Label className="text-xs">Return Reason</Label>
                     <Textarea
                       value={call.returnReason ?? ""}
                       onChange={(e) => handleReturnToggle(true, e.target.value)}
-                      placeholder="Why does this call need a return trip?"
+                      placeholder="What parts are needed for the return trip?"
                       className="text-sm min-h-[60px]"
                     />
                   </section>
