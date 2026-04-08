@@ -10,7 +10,11 @@ const statusValidator = v.union(
   v.literal("return_with_parts"),
   v.literal("transfer_to_shop"),
   v.literal("billable_to_customer"),
-  v.literal("completed")
+  v.literal("completed"),
+  // Legacy — accepted for backward compat
+  v.literal("in_progress"),
+  v.literal("on_hold"),
+  v.literal("needs_return")
 );
 
 export const list = query({

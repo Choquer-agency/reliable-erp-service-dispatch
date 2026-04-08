@@ -81,3 +81,18 @@ export const ALLOWED_TRANSITIONS: Record<ServiceCallStatus, ServiceCallStatus[]>
   billable_to_customer: ["assigned", "completed"],
   completed: [],
 };
+
+// Legacy status display support — so old data doesn't crash the UI
+export const LEGACY_STATUS_LABELS: Record<string, string> = {
+  in_progress: "In Progress (legacy)",
+  on_hold: "On Hold (legacy)",
+  needs_return: "Needs Return (legacy)",
+};
+
+export const LEGACY_STATUS_COLORS = {
+  border: "border-l-gray-300",
+  bg: "bg-gray-50",
+  text: "text-gray-500",
+  badge: "bg-gray-100 text-gray-600",
+  dot: "bg-gray-300",
+};
